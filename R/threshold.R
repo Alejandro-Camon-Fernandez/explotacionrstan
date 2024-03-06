@@ -1,0 +1,370 @@
+#' @name warmdays
+#' @rdname warmdays
+#' @title Warm days
+#' @description Obtain the index of the data that go over an established threhold. This function is thought to find the days of a daily temperature data array that get over a certain temperature threshold.
+#' @param data Array of data that we want to obtain the warm days from.
+#' @param threshold Threshold or array of thresholds used to define the warm days.
+#' @param INDEX A list of one or more factors, each of same length as X, used to group the data by, for example, the year it belongs to. The elements are coerced to factors by as.factor.
+#' @param data.name,INDEX.name Names of the data and the INDEX columns in the returned data.frame.
+#' @examples
+#' auxiliar<- read.table( 'Tmax_Aragon.txt', header=T, dec='.'  )
+#' auxiliar$sin1 <- sin( (auxiliar$day.year-1)/366  *pi *2 )
+#' auxiliar$cos1 <- cos( (auxiliar$day.year-1)/366  *pi *2 )
+#' auxiliar$sin2 <- sin( (auxiliar$day.year-1)/366  *pi *4 )
+#' auxiliar$cos2 <- cos( (auxiliar$day.year-1)/366  *pi *4 )
+#' auxiliar$sin3 <- sin( (auxiliar$day.year-1)/366  *pi *6 )
+#' auxiliar$cos3 <- cos( (auxiliar$day.year-1)/366  *pi *6 )
+#' auxiliar$sin4 <- sin( (auxiliar$day.year-1)/366  *pi *8 )
+#' auxiliar$cos4 <- cos( (auxiliar$day.year-1)/366  *pi *8 )
+#' auxiliar$sin5 <- sin( (auxiliar$day.year-1)/366  *pi *10 )
+#' auxiliar$cos5 <- cos( (auxiliar$day.year-1)/366  *pi *10 )
+#' auxiliar$sin6 <- sin( (auxiliar$day.year-1)/366  *pi *12 )
+#' auxiliar$cos6 <- cos( (auxiliar$day.year-1)/366  *pi *12 )
+#'
+#' #Primer día de cada trimestre de verano que supera el quantil 0.8 de los datos registrados en esos 3 meses (años 1981-2010)
+#' fechas<-which((auxiliar$month %in% c(6,7,8))&(auxiliar$year>=1981)&(auxiliar$year<=2010))
+#' umbrales<-threshold(auxiliar[fechas,places[13]],0.8,INDEX=auxiliar$year[fechas])
+#' auxiliar[fechas,c(1:4,17)][umbrales$first,]
+#'
+#' hist(auxiliar[fechas,4][umbrales$first])
+#'
+#' plot(umbrales$values,auxiliar[fechas,c(17)][umbrales$first])
+#' abline(0,1)
+#'
+#' plot(auxiliar[fechas,c(1)][umbrales$first],auxiliar[fechas,c(4)][umbrales$first])
+#' abline(lm(auxiliar[fechas,c(4)][umbrales$first]~auxiliar[fechas,c(1)][umbrales$first]))
+#'
+#' #Umbral único de las mismas fechas, quantil 0.8 de todos los datos
+#' #(si solo nos interesa esto es más fácil hacer solo el quantil directamente)
+#' umbral<-threshold(auxiliar[fechas,places[13]],0.8)
+#' quantilematrix<-quantile(auxiliar[fechas,places[13]],0.8)
+#'
+#'
+#' ##Usos summerdays()##
+#'
+#' #Primer y último día de verano
+#' fechas<-which((auxiliar$month %in% c(6,7,8))&(auxiliar$year>=1981)&(auxiliar$year<=2010))
+#' threshold<-quantile(auxiliar[fechas,places[13]],0.75)
+#'
+#' start_time <- Sys.time()
+#' summer<-summerdays(auxiliar[-c(1,2),places[13]],threshold,auxiliar$year[-c(1,2)])
+#' end_time <- Sys.time()
+#' timeesf<-end_time - start_time
+#' #Time difference of 0.003350019 secs
+#'
+#' auxiliar[summer[summer[,2]==1960,1]+2,1:4]
+#'
+#' years<-unique(auxiliar$year[-c(1,2)])
+#' first.emp<-array(dim=c(length(years),3))
+#' last.emp<-array(dim=c(length(years),3))
+#' for(j in 1:length(years)){
+#'   if(sum(summer[,2]==years[j])>1){
+#'     first.emp[j,]<-summer[summer[,2]==years[j],][1,]
+#'     last.emp[j,]<-summer[summer[,2]==years[j],][sum(summer[,2]==years[j]),]
+#'   }else if(sum(summer[,2]==years[j])==1){
+#'     first.emp[j,]<-summer[summer[,2]==years[j],]
+#'     last.emp[j,]<-summer[summer[,2]==years[j],]
+#'   }else if(sum(summer[,2]==years[j])==0){
+#'     first.emp[j,2]<-years[j]
+#'     last.emp[j,2]<-years[j]
+#'   }
+#' }
+#' auxiliar[first.emp[,1]+2,1:4]
+#' auxiliar[last.emp[,1]+2,1:4]
+#' plot(auxiliar[first.emp[,1]+2,1],auxiliar[first.emp[,1]+2,4],type="l")
+#' plot(auxiliar[last.emp[,1]+2,1],auxiliar[last.emp[,1]+2,4],type="l")
+#' plot(auxiliar[last.emp[,1]+2,1],auxiliar[last.emp[,1]+2,4]-auxiliar[first.emp[,1]+2,4],type="l")
+#'
+#' #Varios umbrales distintos
+#'
+#' thresholds<-tapply(auxiliar[fechas,places[13]],auxiliar$year[fechas],FUN=quantile,0.8)
+#'
+#' start_time <- Sys.time()
+#' summer<-summerdays(auxiliar[-c(1,2),places[13]],thresholds,auxiliar$year[-c(1,2)])
+#' end_time <- Sys.time()
+#' timeesf<-end_time - start_time
+#' #Time difference of 0.1901541 secs
+#'
+#' auxiliar[summer[summer[,2]==1960,1]+2,1:4]
+#'
+#' years<-unique(auxiliar$year[-c(1,2)])
+#' first<-array(dim=c(length(years),3))
+#' last<-array(dim=c(length(years),3))
+#' for(j in 1:length(years)){
+#'   if(sum(summer[,2]==years[j])>1){
+#'     first[j,]<-summer[summer[,2]==years[j],][1,]
+#'     last[j,]<-summer[summer[,2]==years[j],][sum(summer[,2]==years[j]),]
+#'   }else if(sum(summer[,2]==years[j])==1){
+#'     first[j,]<-summer[summer[,2]==years[j],]
+#'     last[j,]<-summer[summer[,2]==years[j],]
+#'   }else if(sum(summer[,2]==years[j])==0){
+#'     first[j,2]<-years[j]
+#'     last[j,2]<-years[j]
+#'   }
+#' }
+#' auxiliar[first[,1]+2,1:4]
+#' auxiliar[last[,1]+2,1:4]
+#'
+#'
+#' #Primer y último día de verano (samples) (FIGURA TFM)
+#' i.place<-13
+#' fechas<-which((auxiliar$month %in% c(6,7,8))&(auxiliar$year>=1981)&(auxiliar$year<=2010))
+#' threshold<-quantile(auxiliar[fechas,places[i.place]],0.75)
+#' modelo.lm<- ajuste.parada(places[i.place], auxiliar,verbal=FALSE)
+#' aux.X <- model.matrix(modelo.lm[[modelo.lm$mejor_modelo]])[-1,]
+#' aux.X.sigma2 <- model.matrix(modelo.lm[[modelo.lm$mejor_modelo_var]])[-1,]
+#'
+#' start_time <- Sys.time()
+#' samples<-samplerstan(aux.X,aux.X.sigma2,modelos.rstan.jul[[places[i.place]]],extractedsamples=200,randomsamples=1)
+#' end_time <- Sys.time()
+#' timeesf<-end_time - start_time
+#' #Time difference of 20.51119 secs
+#'
+#'
+#' start_time <- Sys.time()
+#' summer.emp<-summerdays(auxiliar[-c(1,2),places[13]],threshold,auxiliar$year[-c(1,2)])
+#' end_time <- Sys.time()
+#' timeesf<-end_time - start_time
+#' #Time difference of 0.003350019 secs
+#'
+#' years<-unique(auxiliar$year[-c(1,2)])
+#' first.emp<-array(dim=c(length(years),3))
+#' last.emp<-array(dim=c(length(years),3))
+#' for(j in 1:length(years)){
+#'   if(sum(summer.emp[,2]==years[j])>1){
+#'     first.emp[j,]<-summer.emp[summer.emp[,2]==years[j],][1,]
+#'     last.emp[j,]<-summer.emp[summer.emp[,2]==years[j],][sum(summer.emp[,2]==years[j]),]
+#'   }else if(sum(summer.emp[,2]==years[j])==1){
+#'     first.emp[j,]<-summer.emp[summer.emp[,2]==years[j],]
+#'     last.emp[j,]<-summer.emp[summer.emp[,2]==years[j],]
+#'   }else if(sum(summer.emp[,2]==years[j])==0){
+#'     first.emp[j,2]<-years[j]
+#'     last.emp[j,2]<-years[j]
+#'   }
+#' }
+#'
+#'
+#' years<-unique(auxiliar$year[-c(1,2)])
+#' start_time <- Sys.time()
+#' summer<-list()
+#' first<-array(dim=c(length(years),3,200))
+#' last<-array(dim=c(length(years),3,200))
+#' for(i in 1:200){
+#'   summer[[i]]<-summerdays(samples[,i],threshold,auxiliar$year[-c(1,2)])
+#'   for(j in 1:length(years)){
+#'     if(sum(summer[[i]][,2]==years[j])>1){
+#'       first[j,,i]<-summer[[i]][summer[[i]][,2]==years[j],][1,]
+#'       last[j,,i]<-summer[[i]][summer[[i]][,2]==years[j],][sum(summer[[i]][,2]==years[j]),]
+#'     }else if(sum(summer[[i]][,2]==years[j])==1){
+#'       first[j,,i]<-summer[[i]][summer[[i]][,2]==years[j],]
+#'       last[j,,i]<-summer[[i]][summer[[i]][,2]==years[j],]
+#'     }else if(sum(summer[[i]][,2]==years[j])==0){
+#'       first[j,2,i]<-years[j]
+#'       last[j,2,i]<-years[j]
+#'     }
+#'   }
+#' }
+#' end_time <- Sys.time()
+#' timeesf<-end_time - start_time
+#' #Time difference of 1.778844 secs
+#' INDEX<-array(dim=c(length(years),200))
+#' for(i in 1:length(years)){
+#'   INDEX[i,]<-i
+#' }
+#'
+#' first.day.year<-array(dim=c(length(years),200))
+#' last.day.year<-array(dim=c(length(years),200))
+#' for(i in 1:length(years)){
+#'   first.day.year[i,]<-auxiliar[first[i,1,]+2,4]
+#'   last.day.year[i,]<-auxiliar[last[i,1,]+2,4]
+#' }
+#'
+#' pdf("C:/Universidad/TFG/TFG Analisis Bayesiano/Trabajo TFM/TFM imagenes/PrimerDiaVerano Tx.zaragoza.pdf",height=4.5,width=5.5)
+#' plot(years,round(rowMeans(first.day.year,na.rm=TRUE)),type="l",xlab="Años",ylab="Días",
+#'   ylim=c(min(tapply(first.day.year,INDEX=INDEX,FUN=quantile,0.025,na.rm=TRUE),na.rm=TRUE),
+#'     max(tapply(first.day.year,INDEX=INDEX,FUN=quantile,0.975,na.rm=TRUE),na.rm=TRUE)+45))
+#' lines(years,tapply(first.day.year,INDEX=INDEX,FUN=quantile,0.025,na.rm=TRUE),lty=2,col="red")
+#' lines(years,tapply(first.day.year,INDEX=INDEX,FUN=quantile,0.975,na.rm=TRUE),lty=2,col="red")
+#' lines(years,auxiliar[first.emp[,1]+2,4],col="blue")
+#' legend("topright",legend=c("Media","IC95","Empírico","21 Junio"),ncol=2,col=c("black","red","blue","green"),lty=c(1,2,1,2))
+#' abline(h=172,col="green",lty=2)
+#' dev.off()
+#'
+#' pdf("C:/Universidad/TFG/TFG Analisis Bayesiano/Trabajo TFM/TFM imagenes/UltimoDiaVerano Tx.zaragoza.pdf",height=4.5,width=5.5)
+#' plot(years,round(rowMeans(last.day.year,na.rm=TRUE)),type="l",xlab="Años",ylab="Días",
+#'   ylim=c(min(tapply(last.day.year,INDEX=INDEX,FUN=quantile,0.025,na.rm=TRUE),na.rm=TRUE)-25,
+#'     max(tapply(last.day.year,INDEX=INDEX,FUN=quantile,0.975,na.rm=TRUE),na.rm=TRUE)))
+#' lines(years,tapply(last.day.year,INDEX=INDEX,FUN=quantile,0.025,na.rm=TRUE),lty=2,col="red")
+#' lines(years,tapply(last.day.year,INDEX=INDEX,FUN=quantile,0.975,na.rm=TRUE),lty=2,col="red")
+#' lines(years,auxiliar[last.emp[,1]+2,4],col="blue")
+#' legend("bottomright",legend=c("Media","IC95","Empírico","31 agosto"),ncol=2,col=c("black","red","blue","green"),lty=c(1,2,1,2))
+#' abline(h=243,col="green",lty=2)
+#' dev.off()
+#'
+#' pdf("C:/Universidad/TFG/TFG Analisis Bayesiano/Trabajo TFM/TFM imagenes/NumeroDiasVerano Tx.zaragoza.pdf",height=4.5,width=5.5)
+#' plot(years,round(rowMeans(last.day.year,na.rm=TRUE))-round(rowMeans(first.day.year,na.rm=TRUE)),type="l",xlab="Años",ylab="Días",ylim=c(min(tapply(last.day.year,INDEX=INDEX,FUN=quantile,0.025,na.rm=TRUE)-tapply(first.day.year,INDEX=INDEX,FUN=quantile,0.025,na.rm=TRUE),na.rm=TRUE)-50,max(tapply(last.day.year,INDEX=INDEX,FUN=quantile,0.975,na.rm=TRUE)-tapply(first.day.year,INDEX=INDEX,FUN=quantile,0.975,na.rm=TRUE),na.rm=TRUE)+50))
+#' lines(years,tapply(last.day.year,INDEX=INDEX,FUN=quantile,0.025,na.rm=TRUE)-tapply(first.day.year,INDEX=INDEX,FUN=quantile,0.025,na.rm=TRUE),lty=2,col="red")
+#' lines(years,tapply(last.day.year,INDEX=INDEX,FUN=quantile,0.975,na.rm=TRUE)-tapply(first.day.year,INDEX=INDEX,FUN=quantile,0.975,na.rm=TRUE),lty=2,col="red")
+#' lines(years,auxiliar[last.emp[,1]+2,4]-auxiliar[first.emp[,1]+2,4],col="blue")
+#' legend("topleft",legend=c("Media","IC95","Empírico"),col=c("black","red","blue"),lty=c(1,2,1))
+#' dev.off()
+#'
+#'
+#' #Diferencia entre quinquenios 1961-1965 y 2011-2015 (FIGURAS TFM)
+#' places  <- c('Tx.pamplona', 'Tx.bunuel', 'Tx.elbayo', 'Tx.morella', 'Tx.huesca', 'Tx.tornos',
+#' 'Tx.santaeulalia', 'Tx.calatayud', 'Tx.panticosa', 'Tx.pueblahijar', 'Tx.anso', 'Tx.daroca',
+#' 'Tx.zaragoza', 'Tx.lasotonera', 'Tx.pallaruelo', 'Tx.cuevaforadada', 'Tx.sallent', 'Tx.yesa')
+#' aux.name.series <- gsub("Tx.", '', places)
+#' aux.name.series <- capitalize(aux.name.series)
+#' aux.name.series[2] <- "Buñuel"
+#' aux.name.series[3] <- "El Bayo"
+#' aux.name.series[7] <- "St. Eulalia"
+#' aux.name.series[10] <- "Puebla Híj."
+#' aux.name.series[11] <- "Ansó"
+#' aux.name.series[14] <- "Sotonera"
+#' aux.name.series[16] <- "Cueva For."
+#'
+#' years<-unique(auxiliar$year[-c(1,2)])
+#' subyears<-c(1961:1965,2011:2015)
+#' lustros<-which(years %in% subyears)
+#' fechas<-which(auxiliar$year %in% subyears)
+#' first<-array(dim=c(10,3,200,18))
+#' last<-array(dim=c(10,3,200,18))
+#'
+#' start_time <- Sys.time()
+#' fechas.ref<-which((auxiliar$month %in% c(6,7,8))&(auxiliar$year>=1981)&(auxiliar$year<=2010))
+#' thresholds<-array(dim=18)
+#' for(k in 1:18){
+#'   thresholds[k]<-quantile(auxiliar[fechas.ref,places[k]],0.75)
+#'   modelo.lm<- ajuste.parada(places[k], auxiliar,verbal=FALSE)
+#'   aux.X <- model.matrix(modelo.lm[[modelo.lm$mejor_modelo]])[-1,]
+#'   aux.X.sigma2 <- model.matrix(modelo.lm[[modelo.lm$mejor_modelo_var]])[-1,]
+#'   samples<-samplerstan(aux.X[fechas-2,],aux.X.sigma2[fechas-2,],modelos.rstan.jul[[places[k]]],extractedsamples=200,randomsamples=1)
+#'   summer<-list()
+#'   for(i in 1:200){
+#'     summer[[i]]<-summerdays(samples[,i],thresholds[k],auxiliar$year[fechas])
+#'     for(j in 1:10){
+#'       if(sum(summer[[i]][,2]==subyears[j])>1){
+#'         first[j,,i,k]<-summer[[i]][summer[[i]][,2]==subyears[j],][1,]
+#'         last[j,,i,k]<-summer[[i]][summer[[i]][,2]==subyears[j],][sum(summer[[i]][,2]==subyears[j]),]
+#'       }else if(sum(summer[[i]][,2]==subyears[j])==1){
+#'         first[j,,i,k]<-summer[[i]][summer[[i]][,2]==subyears[j],]
+#'         last[j,,i,k]<-summer[[i]][summer[[i]][,2]==subyears[j],]
+#'       }else if(sum(summer[[i]][,2]==subyears[j])==0){
+#'         first[j,2,i,k]<-subyears[j]
+#'         last[j,2,i,k]<-subyears[j]
+#'       }
+#'     }
+#'   }
+#' }
+#' end_time <- Sys.time()
+#' timeesf<-end_time - start_time
+#' #Time difference of 3.185512 mins
+#'
+#' first.dif<-array(dim=c(200,18))
+#' last.dif<-array(dim=c(200,18))
+#' for(k in 1:18){
+#'   for(i in 1:200){
+#'     first.dif[i,k]<-round(mean(auxiliar[first[6:10,1,i,k]+2,4],na.rm=TRUE))-round(mean(auxiliar[first[1:5,1,i,k]+2,4],na.rm=TRUE))
+#'     last.dif[i,k]<-round(mean(auxiliar[last[6:10,1,i,k]+2,4],na.rm=TRUE))-round(mean(auxiliar[last[1:5,1,i,k]+2,4],na.rm=TRUE))
+#'   }
+#' }
+#'
+#'
+#' #pdf("C:/Universidad/TFG/TFG Analisis Bayesiano/Trabajo TFM/TFM imagenes/CambioPrimerDia_boxplot",height=4.5,width=5.5)
+#' pdf("C:/Universidad/TFG/TFG Analisis Bayesiano/Trabajo TFM/TFM imagenes/CambioPrimerDia_boxplot_sin_anomalias.pdf",height=4.5,width=5.5)
+#' boxplot(first.dif, axes=FALSE,main="Cambio en primer día de verano",ylab="Días",outline=FALSE)
+#' par(las=2)
+#' axis(1, at=1:18, labels=aux.name.series)
+#' axis(2) #default way
+#' box()
+#' dev.off()
+#'
+#'
+#' pdf("C:/Universidad/TFG/TFG Analisis Bayesiano/Trabajo TFM/TFM imagenes/CambioPrimerDia_segmentos.pdf",height=4.5,width=5.5)
+#' INDEX<-array(dim=c(18,200))
+#' for(i in 1:18){
+#'   INDEX[i,]<-i
+#' }
+#' INDEX<-t(INDEX)
+#' plot(1:18,colMeans(first.dif),ylim=c(min(tapply(first.dif,INDEX=INDEX,FUN=quantile,0.025)),max(tapply(first.dif,INDEX=INDEX,FUN=quantile,0.975))), axes=FALSE,main="Cambio en primer día de verano",xlab="",ylab="Días")
+#' segments(1:18,tapply(first.dif,INDEX=INDEX,FUN=quantile,0.025),1:18,tapply(first.dif,INDEX=INDEX,FUN=quantile,0.975))
+#' par(las=2)
+#' axis(1, at=1:18, labels=aux.name.series)
+#' axis(2) #default way
+#' box()
+#' dev.off()
+#'
+#'
+#' #pdf("C:/Universidad/TFG/TFG Analisis Bayesiano/Trabajo TFM/TFM imagenes/CambioUltimoDia_boxplot",height=4.5,width=5.5)
+#' pdf("C:/Universidad/TFG/TFG Analisis Bayesiano/Trabajo TFM/TFM imagenes/CambioUltimoDia_boxplot_sin_anomalias.pdf",height=4.5,width=5.5)
+#' boxplot(last.dif, axes=FALSE,main="Cambio en último día de verano",ylab="Días",outline=FALSE)
+#' par(las=2)
+#' axis(1, at=1:18, labels=aux.name.series)
+#' axis(2) #default way
+#' box()
+#' dev.off()
+#'
+#' pdf("C:/Universidad/TFG/TFG Analisis Bayesiano/Trabajo TFM/TFM imagenes/CambioUltimoDia_segmentos.pdf",height=4.5,width=5.5)
+#' INDEX<-array(dim=c(18,200))
+#' for(i in 1:18){
+#'   INDEX[i,]<-i
+#' }
+#' INDEX<-t(INDEX)
+#' plot(1:18,colMeans(last.dif),ylim=c(min(tapply(last.dif,INDEX=INDEX,FUN=quantile,0.025)),max(tapply(last.dif,INDEX=INDEX,FUN=quantile,0.975))), axes=FALSE,main="Cambio en ultimo día de verano",xlab="",ylab="Días")
+#' segments(1:18,tapply(last.dif,INDEX=INDEX,FUN=quantile,0.025),1:18,tapply(last.dif,INDEX=INDEX,FUN=quantile,0.975))
+#' par(las=2)
+#' axis(1, at=1:18, labels=aux.name.series)
+#' axis(2) #default way
+#' box()
+#' dev.off()
+#'
+#'
+#' pdf("C:/Universidad/TFG/TFG Analisis Bayesiano/Trabajo TFM/TFM imagenes/CambioPrimeryUltimoDia_segmentos.pdf",height=4.5,width=5.5)
+#' INDEX<-array(dim=c(18,200))
+#' for(i in 1:18){
+#'   INDEX[i,]<-i
+#' }
+#' INDEX<-t(INDEX)
+#' plot(1:18-0.15,colMeans(first.dif),ylim=c(min(tapply(first.dif,INDEX=INDEX,FUN=quantile,0.025),
+#'   tapply(last.dif,INDEX=INDEX,FUN=quantile,0.025)),max(tapply(first.dif,INDEX=INDEX,FUN=quantile,0.975),
+#'   tapply(last.dif,INDEX=INDEX,FUN=quantile,0.975))), axes=FALSE,# main="Cambio en primer y último días de verano",
+#'   xlab="",ylab="Días",col="green")
+#' segments(1:18-0.15,tapply(first.dif,INDEX=INDEX,FUN=quantile,0.025),1:18-0.15,tapply(first.dif,INDEX=INDEX,FUN=quantile,0.975),col="green")
+#' points(1:18+0.15,colMeans(last.dif))
+#' segments(1:18+0.15,tapply(last.dif,INDEX=INDEX,FUN=quantile,0.025),1:18+0.15,tapply(last.dif,INDEX=INDEX,FUN=quantile,0.975))
+#' par(las=2)
+#' axis(1, at=1:18, labels=aux.name.series)
+#' axis(2) #default way
+#' box()
+#' abline(h=0,lty=2,col="red")
+#' #legend("bottomright",legend=c("Primer día", "Último día"),lty=1,pch=1,col=c("green","black"))
+#' dev.off()
+NULL
+
+#' @rdname threshold
+#' @export
+summerdays<-function(data,threshold,INDEX=rep(1,length(data)),data.name="data",INDEX.name="INDEX"){
+
+  if(length(threshold)==1){
+    positions<-which(data>=threshold)
+    days<-rbind(positions,INDEX[positions],data[positions])
+  }
+  else{
+    days<-NULL
+    threshold<-rep(threshold,length.out=length(unique(INDEX)))
+    for(i in 1:length(unique(INDEX))){
+      if(sum((INDEX==unique(INDEX)[i])&(data>=threshold[i]))>0){
+        positions<-which((INDEX==unique(INDEX)[i])&(data>=threshold[i]))
+        dataposition<-data[positions]
+        aux.days<-rbind(positions,rep(unique(INDEX)[i],length(positions)),dataposition)
+        days<-cbind(days,aux.days)
+      }
+    }
+  }
+  days<-t(days)
+  colnames(days)<-c("position",data.name,INDEX.name)
+  return(days)
+
+}
+

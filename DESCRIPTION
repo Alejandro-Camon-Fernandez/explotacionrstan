@@ -1,0 +1,15 @@
+Package: explotacionrstan
+Type: Package
+Title: Functions for exploration and preliminar linear modeling of maximum daily temperature series
+Version: 0.0.0.9000
+Authors@R: 
+    person("Alejandro", "Camon", , "760371@unizar.es", role = c("aut", "cre"))
+Maintainer: Alejandro Camon <760371@unizar.es>
+Description: More about what it does (maybe more than one line)
+    Use four spaces when indenting paragraphs within the Description.
+Imports: quantreg, rstanarm, bamlss, rstan
+License:  GPL-3
+Encoding: UTF-8
+LazyData: true
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.2.2

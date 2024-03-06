@@ -1,0 +1,287 @@
+#' @name esf
+#' @rdname esf
+#' @title Extreme surface fraction
+#' @description Given the fitted stan models of more than one place and the dataframe used to fit them, the posterior distribution of the marginal extreme surface fraction (ESF) is calculated for every day.
+#' @param places Array of names of the columns that contain the data of each place in the data data frame.
+#' @param data Data frame containing the places columns and the dates information necessary.
+#' @param thresholds Array of the thresholds used to define the extreme temperature in each place.
+#' @param stanfitlist List of stanfit objects containing the bayesian model of each place we need.
+#' @param chooselogical Logical array indicating with TRUE in the dates array of the data the position of the year and day of the year data of the days that we want to obtain the esf from.
+#' @param w.days For the marginal esf, a window of "close or similar" days data is considered to avoid the previous day dependence. Then, to obtain the marginal esf of each day, we consider the data of that day plus the data of the w.days next days and the w.days previous days.
+#' @param w.years Similar to the use of w.days, besides the window of 2*w.days+1 days, the marginal esf will also be obtained using the data of the respective days window on the next w.years years and the previous w.years years.
+#' @param extractedsamples An integer that says how many simulated samples of each stanfit object are used.
+#' @param randomsamples An integer that says how many new random samples are obtained from each extracted sample.
+#' @param samplefrom An integer that says from how many of the last extracted samples are obtained the extractedsamples in each model. It must be a multiple of the number of chains simulated in the models greater than extractedsamples.
+#' @importFrom rstan extract
+#' @examples
+#' auxiliar<- read.table( 'Tmax_Aragon.txt', header=T, dec='.'  )
+#' auxiliar$sin1 <- sin( (auxiliar$day.year-1)/366  *pi *2 )
+#' auxiliar$cos1 <- cos( (auxiliar$day.year-1)/366  *pi *2 )
+#' auxiliar$sin2 <- sin( (auxiliar$day.year-1)/366  *pi *4 )
+#' auxiliar$cos2 <- cos( (auxiliar$day.year-1)/366  *pi *4 )
+#' auxiliar$sin3 <- sin( (auxiliar$day.year-1)/366  *pi *6 )
+#' auxiliar$cos3 <- cos( (auxiliar$day.year-1)/366  *pi *6 )
+#' auxiliar$sin4 <- sin( (auxiliar$day.year-1)/366  *pi *8 )
+#' auxiliar$cos4 <- cos( (auxiliar$day.year-1)/366  *pi *8 )
+#' auxiliar$sin5 <- sin( (auxiliar$day.year-1)/366  *pi *10 )
+#' auxiliar$cos5 <- cos( (auxiliar$day.year-1)/366  *pi *10 )
+#' auxiliar$sin6 <- sin( (auxiliar$day.year-1)/366  *pi *12 )
+#' auxiliar$cos6 <- cos( (auxiliar$day.year-1)/366  *pi *12 )
+#'
+#'
+#' #datos muestreados y umbrales en cada lugar:
+#' fechas.ref<-which((auxiliar$month %in% c(6,7,8))&(auxiliar$year>=1981)&(auxiliar$year<=2010))
+#' thresholds<-array(dim=18)
+#' for(i in 1:18){
+#'   thresholds[i]<-quantile(auxiliar[fechas.ref,places[i]],0.8)
+#' }
+#' start_time <- Sys.time()
+#' esfconditional<-esfsample(places,auxiliar,thresholds,modelos.rstan.jul)
+#' end_time <- Sys.time()
+#' timeesf<-end_time - start_time
+#' #Time difference of 6.4886 mins
+#'
+#' start_time <- Sys.time()
+#' esfmarginal<-esfsample(places,auxiliar,thresholds,modelos.rstan.jul,chooselogical=(auxiliar$month==6),w.days=7)
+#' end_time <- Sys.time()
+#' timeesf<-end_time - start_time
+#' #Time difference of 1.537894 hours
+#'
+#' plot(rowMeans(esfmarginal),type="lines", xlab="Día", ylab="Fracción de Superficie Extrema")
+#' for(i in 1:length(unique(auxiliar$year))){
+#'   abline(v=30*i)
+#' }
+#'
+#' #datos empíricos:
+#' empiric<-as.list(auxiliar[,places])
+#' esfempiricconditional<-rowMeans(auxiliar[-c(1,2),places]>=matrix(rep(thresholds,dim(auxiliar[-c(1,2),])[1]),ncol=18,byrow=TRUE))
+#'
+#' library(zoo)
+#' w.days<-7
+#' esfempiricmarginal<-rollmean(esfempiricconditional,2*w.days+1)
+#'
+#'
+#' plot(rowMeans(esfconditional)[auxiliar$year==1999][auxiliar$month %in% c(6,7,8,9)],type="l",xlim=c(0,120))
+#' lines(esfempiricconditional[auxiliar$year==1999][auxiliar$month %in% c(6,7,8,9)],col="red")
+#' lines(esfempiricmarginal[auxiliar$year==1999][auxiliar$month %in% c(6,7,8,9)],col="blue")
+#'
+#' #FSE del 15 de un mes a lo largo de todos los años para distintos umbrales (FIGURAS TFM)
+#' #fechas.ref<-which((auxiliar$month %in% c(6,7,8))&(auxiliar$year>=1981)&(auxiliar$year<=2010))
+#' meses<-c('Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre')
+#' #i.month<-6
+#' #i.quant<-0.75
+#'
+#' for(i.month in c(12,1,2,6,7,8)){
+#'   if(i.month %in% c(12,1,2)){
+#'     fechas.ref<-which(((auxiliar$month %in% c(1,2))&(auxiliar$year>=1981)&(auxiliar$year<=2010))|
+#'     (auxiliar$month ==12)&(auxiliar$year>=1980)&(auxiliar$year<=2009))
+#'   } else if(i.month %in% c(6,7,8)){
+#'       fechas.ref<-which((auxiliar$month %in% c(6,7,8))&(auxiliar$year>=1981)&(auxiliar$year<=2010))
+#'   }
+#'   for(i.quant in c(0.25,0.5,0.75)){
+#'     thresholds<-array(dim=18)
+#'     for(i in 1:18){
+#'       thresholds[i]<-quantile(auxiliar[fechas.ref,places[i]],i.quant)
+#'     }
+#'
+#'     fechas<-(auxiliar$month==i.month)&(auxiliar$day.month==15)
+#'     start_time <- Sys.time()
+#'     esfmarginal<-esfsample(places,auxiliar,thresholds,modelos.rstan.jul,chooselogical=fechas,w.days=7)
+#'     end_time <- Sys.time()
+#'     timeesf<-end_time - start_time
+#'     #Time difference of 7.489182 mins
+#'
+#'
+#'     pdf(paste("C:/Universidad/TFG/TFG Analisis Bayesiano/Trabajo TFM/TFM imagenes/15",meses[i.month],"FSE_1 (quant ",i.quant,").pdf",sep=""),height=4.5,width=5.5)
+#'     INDEX<-matrix(rep(1:length(unique(auxiliar$year)),times=200),ncol=200)
+#'     plot(unique(auxiliar$year),rowMeans(esfmarginal), xlab="Año", ylab="Fracción de Superficie Extrema")
+#'     lines(unique(auxiliar$year),tapply(esfmarginal,INDEX=INDEX,FUN=quantile,0.975), col="red")
+#'     lines(unique(auxiliar$year),tapply(esfmarginal,INDEX=INDEX,FUN=quantile,0.025), col="red")
+#'     dev.off()
+#'
+#'     pdf(paste("C:/Universidad/TFG/TFG Analisis Bayesiano/Trabajo TFM/TFM imagenes/15",meses[i.month],"FSE_2 (quant ",i.quant,").pdf",sep=""),height=4.5,width=5.5)
+#'     plot(unique(auxiliar$year),rowMeans(esfmarginal),type="n", xlab="Año", ylab="Fracción de Superficie Extrema")
+#'     segments(unique(auxiliar$year),tapply(esfmarginal,INDEX=INDEX,FUN=quantile,0.025),unique(auxiliar$year),1-tapply(esfmarginal,INDEX=INDEX,FUN=quantile,0.975))
+#'     dev.off()
+#'
+#'     pdf(paste("C:/Universidad/TFG/TFG Analisis Bayesiano/Trabajo TFM/TFM imagenes/15",meses[i.month],"FSE_3 (quant ",i.quant,").pdf",sep=""),height=4.5,width=5.5)
+#'     plot(unique(auxiliar$year),rowMeans(esfmarginal),type="lines", xlab="Año", ylab="Fracción de Superficie Extrema")
+#'     segments(unique(auxiliar$year),tapply(esfmarginal,INDEX=INDEX,FUN=quantile,0.025),unique(auxiliar$year),1-tapply(esfmarginal,INDEX=INDEX,FUN=quantile,0.975))
+#'     dev.off()
+#'
+#'     pdf(paste("C:/Universidad/TFG/TFG Analisis Bayesiano/Trabajo TFM/TFM imagenes/15",meses[i.month],"FSE_4 (quant ",i.quant,").pdf",sep=""),height=4.5,width=5.5)
+#'     plot(unique(auxiliar$year),rowMeans(esfmarginal),type="lines", xlab="Año", ylab="Fracción de Superficie Extrema")
+#'     lines(unique(auxiliar$year),tapply(esfmarginal,INDEX=INDEX,FUN=quantile,0.975), col="red")
+#'     lines(unique(auxiliar$year),tapply(esfmarginal,INDEX=INDEX,FUN=quantile,0.025), col="red")
+#'     dev.off()
+#'   }
+#' }
+#'
+#'
+#' #15 de junio de 1955 y de 2013 (ventana de 2 años y 7 días) (FIGURAS TFM)
+#' fechas.ref<-which((auxiliar$month %in% c(6,7,8))&(auxiliar$year>=1981)&(auxiliar$year<=2010))
+#' meses<-c('Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre')
+#' firstyear<-1955
+#' lastyear<-2013
+#' w.years=2
+#' w.days=7
+#'
+#' for(i.quant in c(0.5,0.75)){
+#'   thresholds<-array(dim=18)
+#'   for(i in 1:18){
+#'     thresholds[i]<-quantile(auxiliar[fechas.ref,places[i]],i.quant)
+#'   }
+#'   for(i.month in c(6,7,8)){
+#'     fechas<-list()
+#'     fechas$a<-(auxiliar$month==i.month)&(auxiliar$day.month==15)&(auxiliar$year==firstyear)
+#'     fechas$b<-(auxiliar$month==i.month)&(auxiliar$day.month==15)&(auxiliar$year==lastyear)
+#'     esfmarginal<-fechas
+#'     esfempiric<-fechas
+#'     for(k in 1:2){
+#'       start_time <- Sys.time()
+#'       esfmarginal[[k]]<-esfsample(places,auxiliar,thresholds,modelos.rstan.jul,chooselogical=fechas[[k]],w.years=w.years,w.days=w.days)
+#'       end_time <- Sys.time()
+#'       timeesf<-end_time - start_time
+#'       #Time difference of 1.443394 mins
+#'
+#'       #datos empíricos:
+#'       choosedataindex<-which(fechas[[k]])
+#'       needdataindex<-NULL
+#'       for(i in choosedataindex){
+#'         if(auxiliar$day.year[i]==366){
+#'            aux.needdataindex<-which((auxiliar$year>=auxiliar$year[i]-w.years)&(auxiliar$year<=auxiliar$year[i]+w.years)&(auxiliar$day.year==365))
+#'            for(j in 1:length(aux.needdataindex)){
+#'              if(auxiliar$year[aux.needdataindex[j]]%%4==0){
+#'                aux.needdataindex[j]<-aux.needdataindex[j]+1
+#'              }
+#'            }
+#'         }else{
+#'           aux.needdataindex<-which((auxiliar$year>=auxiliar$year[i]-w.years)&(auxiliar$year<=auxiliar$year[i]+w.years)&(auxiliar$day.year==auxiliar$day.year[i]))
+#'         }
+#'         for(j in aux.needdataindex){
+#'         needdataindex<-c(needdataindex,(j-w.days):(j+w.days))
+#'         }
+#'       }
+#'       needdataindex<-sort(unique(needdataindex))
+#'       esfempiric[[k]]<-mean(auxiliar[needdataindex,places]>=matrix(rep(thresholds,length(needdataindex)),ncol=18,byrow=TRUE))
+#'
+#'     }
+#'   pdf(paste("C:/Universidad/TFG/TFG Analisis Bayesiano/Trabajo TFM/TFM imagenes/esf",meses[i.month],firstyear,"-",lastyear,"+empiric (quant ",i.quant,").pdf",sep=""),height=4.5,width=5.5)
+#'   plot(density(esfmarginal$a),xlim=c(min(c(esfmarginal$a,esfmarginal$b,esfempiric$a,esfempiric$b)),max(c(esfmarginal$a,esfmarginal$b,esfempiric$a,esfempiric$b))),xlab="",col="red",
+#'   #main="ESF marginal S=2 R=7")
+#'   main="")
+#'   lines(density(esfmarginal$b),col="blue")
+#'   abline(v=esfempiric$a,col="red",lty=2)
+#'   abline(v=esfempiric$b,col="blue",lty=2)
+#'   #legend("topright",legend=c(paste("15 ",meses[i.month],firstyear,sep=""),paste("15 ",meses[i.month],lastyear,sep="")),lty=1,col=c("blue","red"))
+#'   dev.off()
+#'   }
+#' }
+#'
+#'
+NULL
+
+#' @rdname esf
+#' @export
+esfsample<-function(places,data,thresholds,stanfitlist,chooselogical=rep(TRUE,dim(data)[1]),w.years=0,w.days=0,extractedsamples=200,randomsamples=200,samplefrom=2000){
+
+  nplaces<-length(places)
+  ini<-which((data$year==(data$year[3]+w.years))&(data$day.year==(data$day.year[3])))+w.days
+  fin<-which((data$year==(data$year[length(data$year)]-w.years))&(data$day.year==(data$day.year[length(data$day.year)])))-w.days
+  # if(((data$year[1]+w.years)%%4==0)&(w.years%%4!=0)&(data$day.year[1]>=365-w.days)){
+  #   ini<-which((data$year==(data$year[1]+w.years))&(data$day.year==(data$day.year[1]+1)))+w.days
+  # }
+  # if((data$year[3]%%4==0)&(w.years%%4!=0)&(data$day.year[3]>=366-w.days)){
+  #   ini<-which((data$year==(data$year[3]+w.years))&(data$day.year==(data$day.year[3]-1)))+w.days
+  # }
+  # if(((data$year[length(data$year)]-1)%%4==0)&(w.years%%4!=0)&(data$day.year[length(data$day.year)]<=w.days)){
+  #   fin<-which((data$year==(data$year[length(data$year)]-w.years))&(data$day.year==(data$day.year[length(data$day.year)]-1)))-w.days
+  # }
+  if(((data$year[1]+w.years)%%4==0)&(w.years%%4!=0)&(data$day.year[1]>365-w.days)){
+    ini<-which((data$year==(data$year[1]+w.years+1))&(data$day.year==(data$day.year[1]+w.days-365)))
+  } else if(((data$year[1]+w.years)%%4==0)&(w.years%%4!=0)&(data$day.year[1]==365-w.days)){
+    ini<-which((data$year==(data$year[1]+w.years))&(data$day.year==365))
+  }
+  if((data$year[1]%%4==0)&(w.years%%4!=0)&(data$day.year[1]>366-w.days)){
+    ini<-which((data$year==(data$year[1]+w.years+1))&(data$day.year==(data$day.year[1]+w.days-366)))
+  } else if((data$year[1]%%4==0)&(w.years%%4!=0)&(data$day.year[1]==366-w.days)){
+    ini<-which((data$year==(data$year[1]+w.years+1))&(data$day.year==1))
+  }
+  if(((data$year[length(data$year)]-w.years-1)%%4==0)&(w.years%%4!=0)&(data$day.year[length(data$day.year)]< w.days)){
+    fin<-which((data$year==(data$year[length(data$year)]-w.years-1))&(data$day.year==(data$day.year[length(data$day.year)]-w.days-1+366)))
+  } else if(((data$year[length(data$year)]-w.years-1)%%4==0)&(w.years%%4!=0)&(data$day.year[length(data$day.year)]== w.days)){
+    fin<-which((data$year==(data$year[length(data$year)]-w.years-1))&(data$day.year==(data$day.year[length(data$day.year)]-w.days+366)))
+  }
+  if(((data$year[length(data$year)]-1)%%4==0)&(w.years%%4!=0)&(data$day.year[length(data$day.year)]<=w.days)){
+    fin<-which((data$year==(data$year[length(data$year)]-w.years-1))&(data$day.year==(data$day.year[length(data$day.year)]-w.days+1+365)))
+  } else if(((data$year[length(data$year)])%%4==0)&(w.years%%4!=0)&(data$day.year[length(data$day.year)]==366)){
+    fin<-which((data$year==(data$year[length(data$year)]-w.years))&(data$day.year==(366-w.days)))
+  }
+
+  maxvector<-ini:fin
+  choosedataindex<-maxvector[maxvector %in% which(chooselogical)]
+  choosedates<-data[choosedataindex,c("year","day.year")]
+  needdataindex<-NULL
+  for(i in choosedataindex){
+    if(data$day.year[i]==366){
+      aux.needdataindex<-which((data$year>=data$year[i]-w.years)&(data$year<=data$year[i]+w.years)&(data$day.year==365))
+      for(j in 1:length(aux.needdataindex)){
+        if(data$year[aux.needdataindex[j]]%%4==0){
+          aux.needdataindex[j]<-aux.needdataindex[j]+1
+        }
+      }
+    }else{
+      aux.needdataindex<-which((data$year>=data$year[i]-w.years)&(data$year<=data$year[i]+w.years)&(data$day.year==data$day.year[i]))
+    }
+
+    for(j in aux.needdataindex){
+      needdataindex<-c(needdataindex,(j-w.days):(j+w.days))
+    }
+  }
+  needdataindex<-sort(unique(needdataindex))
+  needdates<-data[needdataindex,c("year","day.year")]
+
+  meanprob<-matrix(0,ncol=extractedsamples,nrow=length(choosedataindex))
+  for(i in 1:nplaces){
+    modelo.lm<- ajuste.parada(places[i], data,verbal=FALSE)
+    aux.X <- model.matrix(modelo.lm[[modelo.lm$mejor_modelo]])[-1,]
+    aux.X.sigma2 <- model.matrix(modelo.lm[[modelo.lm$mejor_modelo_var]])[-1,]
+    prob<-matrix(ncol=extractedsamples,nrow=length(choosedataindex))
+    if(w.days>0 | w.years>0){
+      samples<-samplerstan(aux.X[needdataindex-2,],aux.X.sigma2[needdataindex-2,],stanfitlist[[places[i]]],extractedsamples=extractedsamples,randomsamples=randomsamples,samplefrom=samplefrom,justParams=FALSE)
+      for(j in 1:length(choosedataindex)){
+        if(choosedates$day.year[j]==366){
+          aux.index<-which((needdates$year>=choosedates$year[j]-w.years)&(needdates$year<=choosedates$year[j]+w.years)&(needdates$day.year==365))
+          for(k in 1:length(aux.index)){
+            if(needdates$year[aux.index[k]]%%4==0){
+              aux.index[k]<-aux.index[k]+1
+            }
+          }
+        }else{
+          aux.index<-which((needdates$year>=choosedates$year[j]-w.years)&(needdates$year<=choosedates$year[j]+w.years)&(needdates$day.year==choosedates$day.year[j]))
+        }
+        index<-NULL
+        for(k in aux.index){
+          index<-c(index,(k-w.days):(k+w.days))
+        }
+        aux.fac <- factor(rep(1:extractedsamples,each=randomsamples), levels = 1:extractedsamples)
+        fac <- matrix(rep(aux.fac,length(index)),length(index),extractedsamples*randomsamples,byrow=TRUE)
+        prob[j,]<-tapply(samples[index,]>=thresholds[i],INDEX=fac,mean)
+
+        print(paste("Lugar",i,j,"de",length(choosedataindex),paste(round((j)/(length(choosedataindex)),5)*100,"%",sep=""),j, "||",needdataindex[1],needdataindex[length(needdataindex)],sep=" "))
+      }
+    }else{
+      samples<-samplerstan(aux.X[needdataindex-2,],aux.X.sigma2[needdataindex-2,],stanfitlist[[places[i]]],extractedsamples=extractedsamples,randomsamples=randomsamples,samplefrom=samplefrom,justParams=TRUE)
+      prob<-1-pnorm(thresholds[i],mean=samples$mu,sd=sqrt(samples$sigma2))
+    }
+    meanprob<-meanprob+prob
+    print(paste(i,"de",nplaces))
+  }
+  rownames(meanprob)<-mapply(paste, sep = "-", choosedates[1],choosedates[2])
+  meanprob<-meanprob/nplaces
+  return(meanprob)
+
+}
+
+
+
