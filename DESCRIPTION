@@ -1,6 +1,6 @@
 Package: explotacionrstan
 Type: Package
-Title: Functions for exploration and preliminar linear modeling of maximum daily temperature series
+Title: Exploration and preliminar linear modeling and posterior exlotation of rstan models of maximum daily temperature series
 Version: 0.0.0.9000
 Authors@R: 
     person("Alejandro", "Camon", , "760371@unizar.es", role = c("aut", "cre"))
